@@ -1,17 +1,23 @@
-# Unpinned for now — we'll pin exact versions once the whole thing works.
-fastapi
-uvicorn[standard]
-python-dotenv
+# pinned 2026-07-24 from a working venv. exact versions so a rebuild in six
+# months gets the same thing that works today. only my DIRECT picks are listed
+# — the ~40 transitive packages resolve on their own, and pinning them too
+# would bury what I actually chose.
 
-# JWT validation. The [crypto] extra pulls in the `cryptography` package, which
-# is what actually does ES256 signature checking — plain pyjwt can't do it.
-pyjwt[crypto]
+fastapi==0.139.2
 
-# http client. picked over requests because it does async, which I'll want once
-# rawg candidate fetches start stacking up.
-httpx
+# [standard] pulls the c-speedup extras + the --reload file watcher.
+uvicorn[standard]==0.51.0
 
-# TF-IDF + cosine similarity. numpy is listed explicitly because I use it
-# directly, not just as a scikit-learn dependency.
-scikit-learn
-numpy
+python-dotenv==1.2.2
+
+# [crypto] pulls `cryptography`, which is what actually does ES256. without
+# the extra, auth.py dies on every token.
+pyjwt[crypto]==2.13.0
+
+# http client. picked over requests because it does async.
+httpx==0.28.1
+
+# TF-IDF + cosine. numpy listed explicitly because I use it directly in
+# recommender.py, not just as a scikit-learn dependency.
+scikit-learn==1.9.0
+numpy==2.5.1
