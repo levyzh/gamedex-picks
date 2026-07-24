@@ -1,0 +1,10 @@
+# The real secrets file. .env.example is committed; .env never is.
+.env
+
+# The virtual environment — a local folder of installed packages.
+# Anyone cloning rebuilds it from requirements.txt instead.
+.venv/
+
+# Python's compiled bytecode cache. Generated, never edited by hand.
+__pycache__/
+*.pyc

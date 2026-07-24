@@ -1,0 +1,4 @@
+# Unpinned for now — we'll pin exact versions once the whole thing works.
+fastapi
+uvicorn[standard]
+python-dotenv
