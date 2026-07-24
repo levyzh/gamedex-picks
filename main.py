@@ -1,5 +1,5 @@
-# fastapi app. right now: proves it's alive, proves who you are, reads my list,
-# pulls rawg candidates. recommendations endpoint comes later.
+# fastapi app. proves it's alive, proves who you are, reads my list, pulls rawg
+# candidates, and returns actual recommendations.
 
 import os
 
@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, Query
 from auth import current_user_id
 from gamedex_client import fetch_list
 from rawg_client import fetch_candidates
+from recommender import recommend
 
 # must run before the getenv calls below or they come back empty.
 load_dotenv()
@@ -92,3 +93,10 @@ async def rawg_test(
         "adult_filtered_out": sum(1 for c in candidates if c["adult"]),
         "sample": candidates[:5],
     }
+
+
+# the actual point of the whole service.
+@app.get("/recommendations")
+async def recommendations(user_id: str = Depends(current_user_id)):
+    entries = await fetch_list(user_id)
+    return await recommend(entries)

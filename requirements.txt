@@ -1,4 +1,4 @@
-# Unpinned for now —  pin exact versions once the whole thing works.
+# Unpinned for now — we'll pin exact versions once the whole thing works.
 fastapi
 uvicorn[standard]
 python-dotenv
@@ -7,6 +7,11 @@ python-dotenv
 # is what actually does ES256 signature checking — plain pyjwt can't do it.
 pyjwt[crypto]
 
-# http client. picked over requests because it does async, which is wanted once
+# http client. picked over requests because it does async, which I'll want once
 # rawg candidate fetches start stacking up.
 httpx
+
+# TF-IDF + cosine similarity. numpy is listed explicitly because I use it
+# directly, not just as a scikit-learn dependency.
+scikit-learn
+numpy
