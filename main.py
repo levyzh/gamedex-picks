@@ -1,4 +1,4 @@
-# fastapi app. right now: proves it's alive, proves who you are.
+# fastapi app. right now: proves it's alive, proves who you are, reads my list.
 # recommendations endpoint comes later.
 
 import os
@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI
 
 from auth import current_user_id
+from gamedex_client import fetch_list
 
 # must run before the getenv calls below or they come back empty.
 load_dotenv()
@@ -43,3 +44,28 @@ def health():
 @app.get("/me")
 def me(user_id: str = Depends(current_user_id)):
     return {"user_id": user_id}
+
+
+# also throwaway — proves the two services talk. summary not raw entries,
+# because dumping a full list of jsonb blobs into /docs is unreadable.
+# `async def` because fetch_list awaits; a plain def would block the whole
+# server for the duration of the call.
+@app.get("/my-list")
+async def my_list(user_id: str = Depends(current_user_id)):
+    entries = await fetch_list(user_id)
+
+    return {
+        "count": len(entries),
+        "sample": [
+            {
+                "title": e["game"].get("title"),
+                "status": e["status"],
+                "score": e["score"],
+                # .get not [] — old entries predate these fields and I'd rather
+                # see None than a KeyError.
+                "genreSlugs": e["game"].get("genreSlugs"),
+                "tagSlugs": e["game"].get("tagSlugs"),
+            }
+            for e in entries[:3]
+        ],
+    }

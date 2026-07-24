@@ -1,8 +1,4 @@
-# Unpinned for now — we'll pin exact versions once the whole thing works.
-fastapi
-uvicorn[standard]
-python-dotenv
-# Unpinned for now — pin exact versions once the whole thing works.
+# Unpinned for now —  pin exact versions once the whole thing works.
 fastapi
 uvicorn[standard]
 python-dotenv
@@ -10,3 +6,7 @@ python-dotenv
 # JWT validation. The [crypto] extra pulls in the `cryptography` package, which
 # is what actually does ES256 signature checking — plain pyjwt can't do it.
 pyjwt[crypto]
+
+# http client. picked over requests because it does async, which is wanted once
+# rawg candidate fetches start stacking up.
+httpx
