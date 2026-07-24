@@ -1,0 +1,107 @@
+# rawg calls, with the key read from env instead of shipped to a browser.
+# this file is the entire reason this service exists as its own project.
+#
+# NOTE: this only covers MY rawg usage. the main gamedex app's browse/search/
+# home/detail calls are still browser-side with VITE_RAWG_KEY. separate job.
+
+import os
+
+import httpx
+from dotenv import load_dotenv
+from fastapi import HTTPException, status
+
+load_dotenv()
+
+RAWG_KEY = os.getenv("RAWG_KEY")
+RAWG_BASE = "https://api.rawg.io/api"
+
+# rawg caps page_size at 40. asking for more just silently gives 40.
+PAGE_SIZE = 40
+
+TIMEOUT_SECONDS = 15.0
+
+# ported verbatim from ADULT_TAGS in the frontend's src/api/rawg.ts. do NOT
+# swap this for esrb 18+ or the nudity/sexual-content tags — those catch
+# witcher/gta/cyberpunk. keeping the two apps in agreement matters more than
+# this being clever.
+ADULT_TAGS = {"nsfw", "hentai", "eroge"}
+
+
+def _is_adult(raw: dict) -> bool:
+    tags = raw.get("tags") or []
+    return any(t.get("slug") in ADULT_TAGS for t in tags)
+
+
+def map_game(raw: dict) -> dict:
+    # same shape as the frontend's mapGame, minus the fields I don't need
+    # (dev/synopsis are detail-page only). keeping the names identical so a
+    # candidate and a stored list entry can be compared without translating.
+    return {
+        "id": raw.get("id"),
+        "title": raw.get("name"),
+        "cover": raw.get("background_image"),
+        "userRating": raw.get("rating") or 0,
+        "ratingsCount": raw.get("ratings_count") or 0,
+        "genreSlugs": [g.get("slug") for g in (raw.get("genres") or [])],
+        "tagSlugs": [t.get("slug") for t in (raw.get("tags") or [])],
+        "adult": _is_adult(raw),
+    }
+
+
+async def fetch_candidates(
+    genre_slugs: list[str],
+    tag_slugs: list[str],
+    page: int = 1,
+) -> list[dict]:
+    # rawg treats comma-separated slugs as OR, which is what I want — a wide
+    # net of plausible games, then TF-IDF does the actual discriminating.
+    params = {
+        "key": RAWG_KEY,
+        "page_size": PAGE_SIZE,
+        "page": page,
+        # -added = most added to people's libraries. same trick the frontend
+        # uses to dodge rawg's "-rating" junk problem (1-vote 5.0 games).
+        "ordering": "-added",
+    }
+    if genre_slugs:
+        params["genres"] = ",".join(genre_slugs)
+    if tag_slugs:
+        params["tags"] = ",".join(tag_slugs)
+
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+            response = await client.get(f"{RAWG_BASE}/games", params=params)
+            response.raise_for_status()
+            data = response.json()
+
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="RAWG took too long to respond.",
+        )
+    except httpx.HTTPStatusError as e:
+        code = e.response.status_code
+        if code == 401:
+            # wrong/missing key. worth its own message because it's the one
+            # failure that's purely a .env problem.
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="RAWG rejected the API key — check RAWG_KEY in .env.",
+            )
+        if code == 429:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="RAWG rate limit hit. Wait a bit.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"RAWG returned {code}.",
+        )
+    except httpx.RequestError:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Couldn't reach RAWG.",
+        )
+
+    # results is the actual list; the rest of the payload is paging metadata.
+    return [map_game(raw) for raw in data.get("results", [])]

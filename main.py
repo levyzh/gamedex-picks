@@ -1,13 +1,14 @@
-# fastapi app. right now: proves it's alive, proves who you are, reads my list.
-# recommendations endpoint comes later.
+# fastapi app. right now: proves it's alive, proves who you are, reads my list,
+# pulls rawg candidates. recommendations endpoint comes later.
 
 import os
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Query
 
 from auth import current_user_id
 from gamedex_client import fetch_list
+from rawg_client import fetch_candidates
 
 # must run before the getenv calls below or they come back empty.
 load_dotenv()
@@ -68,4 +69,26 @@ async def my_list(user_id: str = Depends(current_user_id)):
             }
             for e in entries[:3]
         ],
+    }
+
+
+# throwaway too. authed on purpose — an open endpoint here would let anyone
+# burn my rawg quota.
+@app.get("/rawg-test")
+async def rawg_test(
+    genres: str = Query("action", description="comma-separated genre slugs"),
+    tags: str = Query("", description="comma-separated tag slugs"),
+    user_id: str = Depends(current_user_id),
+):
+    # split then filter — "a,,b".split(",") leaves an empty string that rawg
+    # would choke on, and "" alone gives [""] not [].
+    genre_list = [s.strip() for s in genres.split(",") if s.strip()]
+    tag_list = [s.strip() for s in tags.split(",") if s.strip()]
+
+    candidates = await fetch_candidates(genre_list, tag_list)
+
+    return {
+        "count": len(candidates),
+        "adult_filtered_out": sum(1 for c in candidates if c["adult"]),
+        "sample": candidates[:5],
     }
