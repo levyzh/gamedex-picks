@@ -32,14 +32,38 @@ def _is_adult(raw: dict) -> bool:
     return any(t.get("slug") in ADULT_TAGS for t in tags)
 
 
+def _year(raw: dict) -> int | None:
+    # rawg gives "2017-03-03" and sometimes nothing at all. I want the number
+    # or None; the card decides what a missing year looks like. the frontend
+    # puts an em dash in this slot instead, which makes its `year` a
+    # number-or-string — not copying that wart over here.
+    released = raw.get("released") or ""
+    try:
+        return int(released[:4])
+    except ValueError:
+        return None
+
+
 def map_game(raw: dict) -> dict:
     # same shape as the frontend's mapGame, minus the fields I don't need
     # (dev/synopsis are detail-page only). keeping the names identical so a
     # candidate and a stored list entry can be compared without translating.
+    #
+    # year/genre exist only so the picks card has a line under the title —
+    # genreSlugs are for the algorithm and look awful on screen
+    # ("role-playing-games-rpg").
+    #
+    # note what is deliberately NOT here: `score`. the frontend derives it
+    # (metacritic/10, falling back to rating*2) and re-implementing that
+    # formula in python would put one rule in two languages with nothing to
+    # stop them drifting. this file only passes through what rawg hands me;
+    # anything derived stays on the side that already derives it.
     return {
         "id": raw.get("id"),
         "title": raw.get("name"),
         "cover": raw.get("background_image"),
+        "year": _year(raw),
+        "genre": [g.get("name") for g in (raw.get("genres") or []) if g.get("name")],
         "userRating": raw.get("rating") or 0,
         "ratingsCount": raw.get("ratings_count") or 0,
         "genreSlugs": [g.get("slug") for g in (raw.get("genres") or [])],

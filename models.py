@@ -15,6 +15,9 @@ class HealthResponse(BaseModel):
     rawg_key_loaded: bool
     gamedex_api_base: str | None
     jwks_url_loaded: bool
+    # full list, not a boolean — a blocked browser request never tells you what
+    # the server actually allows, so this is the first thing I want to see.
+    cors_origins: list[str]
 
 
 class Recommendation(BaseModel):
@@ -23,6 +26,11 @@ class Recommendation(BaseModel):
     cover: str | None
     userRating: float
     genreSlugs: list[str]
+    # the line under the title on the card. year is None when rawg has no
+    # release date, genre can be empty — the card decides what to draw in
+    # either case, I don't invent a placeholder here.
+    year: int | None
+    genre: list[str]
     # only ever true when the adult gate opened for this user. the frontend
     # uses it to blur the cover the same way the main app's GameCard does.
     adult: bool

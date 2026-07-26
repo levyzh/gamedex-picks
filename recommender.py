@@ -148,6 +148,9 @@ def _result(game: dict, similarity) -> dict:
         "cover": game["cover"],
         "userRating": game["userRating"],
         "genreSlugs": game["genreSlugs"],
+        # genre/year are display-only, the algorithm never touches them.
+        "year": game["year"],
+        "genre": game["genre"],
         # passed through so the ui can blur a cover. only ever true when the
         # gate below opened, so it should never surprise anyone.
         "adult": game["adult"],
