@@ -23,6 +23,9 @@ class Recommendation(BaseModel):
     cover: str | None
     userRating: float
     genreSlugs: list[str]
+    # only ever true when the adult gate opened for this user. the frontend
+    # uses it to blur the cover the same way the main app's GameCard does.
+    adult: bool
     # None on the popular/cold-start path — nothing was ranked, so there's no
     # score to report. deliberately not faking it with 0.0.
     similarity: float | None
@@ -32,6 +35,11 @@ class RecommendationsResponse(BaseModel):
     # basis tells a future frontend which of the two paths ran, so it can say
     # "based on your list" vs "popular right now" honestly.
     basis: Literal["content", "popular"]
+
+    # did the adult gate open? always false on the cold-start path, where I
+    # filter unconditionally. lets the ui explain itself instead of silently
+    # changing what it shows.
+    adult_included: bool = False
 
     # everything below is path-dependent, hence the defaults. the query_*/
     # counts fields only exist on the content path; note only shows up when

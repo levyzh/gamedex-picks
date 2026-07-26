@@ -1,7 +1,7 @@
 # the actual algorithm. content-based:
 #   1. taste vector from my list (genre/tag slugs weighted by status + score)
 #   2. pull rawg candidates matching my strongest slugs
-#   3. drop what I already own + adult titles
+#   3. drop what I already own + adult titles, unless my own list says I want them
 #   4. rank by tf-idf + cosine against the taste vector
 #   5. top 20
 # if I ever swap this for embeddings, it goes behind recommend() and nothing
@@ -11,7 +11,7 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from rawg_client import fetch_candidates
+from rawg_client import ADULT_TAGS, fetch_candidates
 
 # how much each status says about my taste. dropped is negative on purpose.
 STATUS_WEIGHTS = {
@@ -37,6 +37,13 @@ TOP_TAGS_FOR_QUERY = 5
 # below this many usable entries the taste vector is noise -> popular fallback.
 MIN_ENTRIES = 3
 
+# the adult gate. hidden by default, but hiding them from someone whose list is
+# full of them is just as wrong an answer. BOTH conditions have to pass — a
+# share on its own flips on at one game in a three-game list.
+# guesses, same as the status weights. 15% is the one I'd move first.
+ADULT_MIN_COUNT = 3
+ADULT_MIN_SHARE = 0.15
+
 # 40 per page. 2 pages = 80 candidates before filtering.
 CANDIDATE_PAGES = 2
 
@@ -49,6 +56,14 @@ def _tokens(game: dict) -> list[str]:
     genres = game.get("genreSlugs") or []
     tags = (game.get("tagSlugs") or [])[:MAX_TAGS_PER_GAME]
     return [s for s in genres + tags if s]
+
+
+def _is_adult_game(game: dict) -> bool:
+    # for entries in MY list. derived from tagSlugs rather than trusting the
+    # stored `adult` boolean: one definition (ADULT_TAGS) used on both sides,
+    # and older entries may predate that field entirely.
+    tags = game.get("tagSlugs") or []
+    return any(slug in ADULT_TAGS for slug in tags)
 
 
 def _weight(status: str, score) -> float | None:
@@ -81,12 +96,13 @@ def _top_slugs(scores: dict[str, float], limit: int) -> list[str]:
 
 
 def build_profile(entries: list[dict]):
-    """my list -> (docs, weights, owned ids, genre scores, tag scores)"""
+    """my list -> (docs, weights, owned ids, genre scores, tag scores, adult count)"""
     docs: list[list[str]] = []
     weights: list[float] = []
     owned: set[int] = set()
     genre_scores: dict[str, float] = {}
     tag_scores: dict[str, float] = {}
+    adult_positive = 0
 
     for entry in entries:
         game = entry.get("game") or {}
@@ -109,6 +125,12 @@ def build_profile(entries: list[dict]):
         docs.append(tokens)
         weights.append(weight)
 
+        # positive weight ONLY. a hentai game I dropped and rated 2 is evidence
+        # against, and counting it toward "show me more" is the same double
+        # negative _weight() has the big warning about.
+        if weight > 0 and _is_adult_game(game):
+            adult_positive += 1
+
         # separate genre/tag tallies, only so I can build the rawg query —
         # that endpoint takes genres and tags as different params.
         for slug in game.get("genreSlugs") or []:
@@ -116,7 +138,7 @@ def build_profile(entries: list[dict]):
         for slug in (game.get("tagSlugs") or [])[:MAX_TAGS_PER_GAME]:
             tag_scores[slug] = tag_scores.get(slug, 0.0) + weight
 
-    return docs, weights, owned, genre_scores, tag_scores
+    return docs, weights, owned, genre_scores, tag_scores, adult_positive
 
 
 def _result(game: dict, similarity) -> dict:
@@ -126,23 +148,46 @@ def _result(game: dict, similarity) -> dict:
         "cover": game["cover"],
         "userRating": game["userRating"],
         "genreSlugs": game["genreSlugs"],
+        # passed through so the ui can blur a cover. only ever true when the
+        # gate below opened, so it should never surprise anyone.
+        "adult": game["adult"],
         # rounded because 17 decimal places of cosine is not information
         "similarity": None if similarity is None else round(float(similarity), 4),
     }
 
 
 async def recommend(entries: list[dict]) -> dict:
-    docs, weights, owned, genre_scores, tag_scores = build_profile(entries)
+    (
+        docs,
+        weights,
+        owned,
+        genre_scores,
+        tag_scores,
+        adult_positive,
+    ) = build_profile(entries)
 
     # --- cold start: empty/tiny list, or every entry too old to have slugs ---
+    # adult stays filtered here NO MATTER WHAT. under MIN_ENTRIES I know
+    # nothing about this person, and the popular list is not the place to guess.
     if len(docs) < MIN_ENTRIES:
         popular = await fetch_candidates([], [])
         picks = [c for c in popular if not c["adult"] and c["id"] not in owned]
         return {
             "basis": "popular",
             "note": f"Need at least {MIN_ENTRIES} rated games with genre data.",
+            "adult_included": False,
             "results": [_result(c, None) for c in picks[:RESULT_COUNT]],
         }
+
+    # --- the adult gate ---
+    # measured against the positive-weight entries only, i.e. the same
+    # population _top_slugs works from. enough of them AND a real share.
+    positive_total = sum(1 for w in weights if w > 0)
+    include_adult = (
+        adult_positive >= ADULT_MIN_COUNT
+        and positive_total > 0
+        and adult_positive / positive_total >= ADULT_MIN_SHARE
+    )
 
     top_genres = _top_slugs(genre_scores, TOP_GENRES_FOR_QUERY)
     top_tags = _top_slugs(tag_scores, TOP_TAGS_FOR_QUERY)
@@ -157,7 +202,12 @@ async def recommend(entries: list[dict]) -> dict:
             game_id = game.get("id")
             if game_id is None or game_id in seen:
                 continue
-            if game_id in owned or game["adult"]:
+            if game_id in owned:
+                continue
+            # rawg ORs the slugs together, so an adult game can arrive matching
+            # `anime` alone. that's why this gate exists instead of just
+            # trusting cosine to rank them down.
+            if game["adult"] and not include_adult:
                 continue
             if not _tokens(game):
                 continue  # nothing to compare against
@@ -168,6 +218,7 @@ async def recommend(entries: list[dict]) -> dict:
         return {
             "basis": "content",
             "note": "No new candidates came back — try widening the query slugs.",
+            "adult_included": include_adult,
             "results": [],
         }
 
@@ -194,10 +245,12 @@ async def recommend(entries: list[dict]) -> dict:
 
     # edge case: weights happen to cancel to exactly zero. cosine divides by
     # the norm, so this would be a divide-by-zero -> nan everywhere.
+    # candidates here were already gated above, so nothing leaks on this path.
     if not taste.any():
         return {
             "basis": "popular",
             "note": "Taste vector cancelled out — not enough signal to rank.",
+            "adult_included": include_adult,
             "results": [_result(c, None) for c in candidates[:RESULT_COUNT]],
         }
 
@@ -215,5 +268,6 @@ async def recommend(entries: list[dict]) -> dict:
         "query_tags": top_tags,
         "from_entries": len(docs),
         "candidates_considered": len(candidates),
+        "adult_included": include_adult,
         "results": [_result(game, sim) for game, sim in ranked[:RESULT_COUNT]],
     }
