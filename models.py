@@ -63,3 +63,9 @@ class RecommendationsResponse(BaseModel):
 
 class CoversResponse(BaseModel):
     covers: list[str]
+
+
+class StatsResponse(BaseModel):
+    games: int
+    genres: int
+    tags: int

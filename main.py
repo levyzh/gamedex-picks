@@ -9,8 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from auth import current_user_id
 from covers import popular_covers
+from stats import catalog_stats
 from gamedex_client import fetch_list
-from models import CoversResponse, HealthResponse, RecommendationsResponse
+from models import CoversResponse, HealthResponse, RecommendationsResponse, StatsResponse
 from recommender import recommend
 
 # must run before the getenv calls below or they come back empty.
@@ -87,3 +88,9 @@ async def recommendations(user_id: str = Depends(current_user_id)):
 @app.get("/covers", response_model=CoversResponse)
 async def covers():
     return {"covers": await popular_covers()}
+
+
+# unauthed: catalog totals for the welcome page's stats band.
+@app.get("/stats", response_model=StatsResponse)
+async def stats():
+    return await catalog_stats()

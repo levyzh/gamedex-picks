@@ -72,31 +72,12 @@ def map_game(raw: dict) -> dict:
     }
 
 
-async def fetch_candidates(
-    genre_slugs: list[str],
-    tag_slugs: list[str],
-    page: int = 1,
-) -> list[dict]:
-    # rawg treats comma-separated slugs as OR, which is what I want — a wide
-    # net of plausible games, then TF-IDF does the actual discriminating.
-    params = {
-        "key": RAWG_KEY,
-        "page_size": PAGE_SIZE,
-        "page": page,
-        # -added = most added to people's libraries. same trick the frontend
-        # uses to dodge rawg's "-rating" junk problem (1-vote 5.0 games).
-        "ordering": "-added",
-    }
-    if genre_slugs:
-        params["genres"] = ",".join(genre_slugs)
-    if tag_slugs:
-        params["tags"] = ",".join(tag_slugs)
-
+async def _get(path: str, params: dict) -> dict:
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            response = await client.get(f"{RAWG_BASE}/games", params=params)
+            response = await client.get(f"{RAWG_BASE}{path}", params=params)
             response.raise_for_status()
-            data = response.json()
+            return response.json()
 
     except httpx.TimeoutException:
         raise HTTPException(
@@ -127,5 +108,34 @@ async def fetch_candidates(
             detail="Couldn't reach RAWG.",
         )
 
+
+async def fetch_candidates(
+    genre_slugs: list[str],
+    tag_slugs: list[str],
+    page: int = 1,
+) -> list[dict]:
+    # rawg treats comma-separated slugs as OR, which is what I want — a wide
+    # net of plausible games, then TF-IDF does the actual discriminating.
+    params = {
+        "key": RAWG_KEY,
+        "page_size": PAGE_SIZE,
+        "page": page,
+        # -added = most added to people's libraries. same trick the frontend
+        # uses to dodge rawg's "-rating" junk problem (1-vote 5.0 games).
+        "ordering": "-added",
+    }
+    if genre_slugs:
+        params["genres"] = ",".join(genre_slugs)
+    if tag_slugs:
+        params["tags"] = ",".join(tag_slugs)
+
+    data = await _get("/games", params)
+
     # results is the actual list; the rest of the payload is paging metadata.
     return [map_game(raw) for raw in data.get("results", [])]
+
+
+async def fetch_count(path: str) -> int:
+    # every rawg list endpoint reports its total in `count`; one result is enough to read it.
+    data = await _get(path, {"key": RAWG_KEY, "page_size": 1})
+    return data.get("count", 0)
