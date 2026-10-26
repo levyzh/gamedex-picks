@@ -59,3 +59,7 @@ class RecommendationsResponse(BaseModel):
     candidates_considered: int | None = None
 
     results: list[Recommendation]
+
+
+class CoversResponse(BaseModel):
+    covers: list[str]

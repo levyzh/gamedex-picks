@@ -8,8 +8,9 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from auth import current_user_id
+from covers import popular_covers
 from gamedex_client import fetch_list
-from models import HealthResponse, RecommendationsResponse
+from models import CoversResponse, HealthResponse, RecommendationsResponse
 from recommender import recommend
 
 # must run before the getenv calls below or they come back empty.
@@ -80,3 +81,9 @@ def health():
 async def recommendations(user_id: str = Depends(current_user_id)):
     entries = await fetch_list(user_id)
     return await recommend(entries)
+
+
+# unauthed: the logged-out welcome page uses these as its background.
+@app.get("/covers", response_model=CoversResponse)
+async def covers():
+    return {"covers": await popular_covers()}
