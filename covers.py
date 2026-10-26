@@ -6,8 +6,8 @@ from rawg_client import fetch_candidates
 # the endpoint is public, so cache or every page view spends RAWG quota.
 CACHE_SECONDS = 6 * 60 * 60
 
-# rawg caps a page at 40, so two pages for enough covers to fill a big screen.
-PAGES = 2
+# rawg caps a page at 40. five pages (~200 covers) fills a 1440p wall without repeats.
+PAGES = 5
 
 _cached: list[str] = []
 _cached_at = 0.0
