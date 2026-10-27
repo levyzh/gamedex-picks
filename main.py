@@ -9,9 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from auth import current_user_id
 from covers import popular_covers
+from examples import example_covers
 from stats import catalog_stats
 from gamedex_client import fetch_list
-from models import CoversResponse, HealthResponse, RecommendationsResponse, StatsResponse
+from models import CoversResponse, ExamplesResponse, HealthResponse, RecommendationsResponse, StatsResponse
 from recommender import recommend
 
 # must run before the getenv calls below or they come back empty.
@@ -94,3 +95,9 @@ async def covers():
 @app.get("/stats", response_model=StatsResponse)
 async def stats():
     return await catalog_stats()
+
+
+# unauthed: real covers for the example games in the welcome page's how-it-works section.
+@app.get("/examples", response_model=ExamplesResponse)
+async def examples():
+    return {"covers": await example_covers()}

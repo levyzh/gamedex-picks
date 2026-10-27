@@ -65,6 +65,11 @@ class CoversResponse(BaseModel):
     covers: list[str]
 
 
+class ExamplesResponse(BaseModel):
+    # slug -> cover url. a slug RAWG couldn't find is left out, not null.
+    covers: dict[str, str]
+
+
 class StatsResponse(BaseModel):
     games: int
     genres: int

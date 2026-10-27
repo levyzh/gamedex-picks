@@ -139,3 +139,8 @@ async def fetch_count(path: str) -> int:
     # every rawg list endpoint reports its total in `count`; one result is enough to read it.
     data = await _get(path, {"key": RAWG_KEY, "page_size": 1})
     return data.get("count", 0)
+
+
+async def fetch_cover(slug: str) -> str | None:
+    data = await _get(f"/games/{slug}", {"key": RAWG_KEY})
+    return data.get("background_image")
